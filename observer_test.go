@@ -10,8 +10,8 @@ func TestOpenShell(t *testing.T) {
 }
 
 func TestOpenShellWrong(t *testing.T) {
-	var ergeb bool = openShell("x")
-	if ergeb != false {
+	var solve bool = openShell("x")
+	if solve != false {
 		t.Error("Öffnen der falschen Shell möglich")
 	}
 }
