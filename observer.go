@@ -22,7 +22,7 @@ func enterCommand(command string, location string) bool {
 
 	cmd.Run()
 	stdout, err := cmd.Output()
-	if !strings.Contains(err.Error(), "started") {
+	if !strings.Contains(err.Error(), "asdf") {
 		//fmt.Println(err)
 		return false
 	}
