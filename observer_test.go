@@ -1,9 +1,6 @@
 package main
 
-import (
-	"net/http"
-	"testing"
-)
+import "testing"
 
 func TestOpenShell(t *testing.T) {
 	var solve bool = openShell("tasklist")
@@ -19,12 +16,12 @@ func TestOpenShellWrong(t *testing.T) {
 	}
 }
 
-func TestEnterCommand(t *testing.T) {
-	var solve bool = enterCommand("explorer.exe", "C:\\Go\\src\\_Programme\\Project")
-	if solve != true {
-		t.Error("Fehler beim Eingeben von Commands")
-	}
-}
+//func TestEnterCommand(t *testing.T) {
+//	var solve bool = enterCommand("explorer.exe", "C:\\Go\\src\\_Programme\\Project")
+//	if solve != true {
+//		t.Error("Fehler beim Eingeben von Commands")
+//	}
+//}
 
 func TestEnterWrongCommand(t *testing.T) {
 	var solve bool = enterCommand("x", "y")
@@ -32,12 +29,12 @@ func TestEnterWrongCommand(t *testing.T) {
 		t.Error("Eingeben von falschen Commands möglich")
 	}
 }
-
-func TestOpenWebsite(t *testing.T) {
-	http.HandleFunc("/", handler)
-	err := http.ListenAndServe(":8080", nil)
-	//	err := http.Serve(":8080", nil)
-	if err != nil {
-		t.Errorf("%v", err)
+func TestReadXML(t *testing.T) {
+	readXML()
+	if availableApps == nil || availableAppsButtonHTML == "" {
+		t.Error("Fehler beim Einlesen der XML-Datei")
 	}
+}
+func TestMainHandler(t *testing.T) {
+	//Überprüfung, ob MainHandler funktioniert
 }
