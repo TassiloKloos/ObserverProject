@@ -24,7 +24,7 @@ func enterCommand(command string, location string) bool {
 
 	cmd.Run()
 	stdout, err := cmd.Output()
-	if !strings.Contains(err.Error(), "asdf") {
+	if !strings.Contains(err.Error(), "proc") {
 		//fmt.Println(err)
 		return false
 	}
@@ -38,17 +38,21 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "World"
 	}
-	responseString := "<html><head><title></title></head><body><form action='/login' method='post'><input type='submit' value='Print asdf'></form></body></html>"
+	responseString := "<html><head><title></title></head><body><form action='/proc/?procNr=ID0' method='post'><input type='submit' value='Prozess 0'></form><form action='/proc/?procNr=ID1' method='post'><input type='submit' value='Prozess 1'></form></body></html>"
 	w.Write([]byte(responseString))
 }
-func testHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("asdf")
-	responseString := "<html><head></head><body>asdf</body></html>"
+func procHandler(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	procNr := q.Get("procNr")
+	if procNr == "" {
+		procNr = "notFound"
+	}
+	fmt.Println(procNr)
+	responseString := "<html><head></head><body>" + procNr + "</body></html>"
 	w.Write([]byte(responseString))
 }
 func main() {
 	http.HandleFunc("/", mainHandler)
-	http.HandleFunc("/asdf", mainHandler)
-	http.HandleFunc("/login", testHandler)
+	http.HandleFunc("/proc/", procHandler)
 	log.Fatalln(http.ListenAndServe(":8080", nil))
 }
