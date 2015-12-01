@@ -24,7 +24,7 @@ func enterCommand(command string, location string) bool {
 
 	cmd.Run()
 	stdout, err := cmd.Output()
-	if !strings.Contains(err.Error(), "proc") {
+	if !strings.Contains(err.Error(), "asdf") {
 		//fmt.Println(err)
 		return false
 	}
@@ -38,7 +38,10 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "World"
 	}
-	responseString := "<html><head><title></title></head><body><form action='/proc/?procNr=ID0' method='post'><input type='submit' value='Prozess 0'></form><form action='/proc/?procNr=ID1' method='post'><input type='submit' value='Prozess 1'></form></body></html>"
+	responseString := "<html><head><title></title></head><body>" +
+		"<form action='/proc/?procNr=ID0' method='post'><input type='submit' value='Prozess 0'></form>" +
+		"<form action='/proc/?procNr=ID1' method='post'><input type='submit' value='Prozess 1'></form>" +
+		"</body></html>"
 	w.Write([]byte(responseString))
 }
 func procHandler(w http.ResponseWriter, r *http.Request) {
