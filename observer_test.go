@@ -1,6 +1,9 @@
-package observer
+package main
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+)
 
 func TestOpenShell(t *testing.T) {
 	var solve bool = openShell("tasklist")
@@ -27,5 +30,14 @@ func TestEnterWrongCommand(t *testing.T) {
 	var solve bool = enterCommand("x", "y")
 	if solve != false {
 		t.Error("Eingeben von falschen Commands möglich")
+	}
+}
+
+func TestOpenWebsite(t *testing.T) {
+	http.HandleFunc("/", handler)
+	err := http.ListenAndServe(":8080", nil)
+	//	err := http.Serve(":8080", nil)
+	if err != nil {
+		t.Errorf("%v", err)
 	}
 }
