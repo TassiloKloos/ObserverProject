@@ -1,34 +1,13 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
 
-func TestOpenShell(t *testing.T) {
-	var solve bool = openShell("tasklist")
-	if solve != true {
-		t.Error("Fehler beim Öffnen der Shell")
-	}
-}
-
-func TestOpenShellWrong(t *testing.T) {
-	var solve bool = openShell("x")
-	if solve != false {
-		t.Error("Öffnen der falschen Shell möglich")
-	}
-}
-
-//func TestEnterCommand(t *testing.T) {
-//	var solve bool = enterCommand("explorer.exe", "C:\\Go\\src\\_Programme\\Project")
-//	if solve != true {
-//		t.Error("Fehler beim Eingeben von Commands")
-//	}
-//}
-
-func TestEnterWrongCommand(t *testing.T) {
-	var solve bool = enterCommand("x", "y")
-	if solve != false {
-		t.Error("Eingeben von falschen Commands möglich")
-	}
-}
 func TestReadXML(t *testing.T) {
 	readXML()
 	if availableApps == nil || availableAppsButtonHTML == "" {
@@ -36,5 +15,48 @@ func TestReadXML(t *testing.T) {
 	}
 }
 func TestMainHandler(t *testing.T) {
-	//Überprüfung, ob MainHandler funktioniert
+	s := &http.Server{
+		Addr:           ":8080",
+		Handler:        http.HandlerFunc(mainHandler),
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+	testServer := httptest.NewServer(s.Handler)
+	res, err := http.Get(testServer.URL)
+	if err != nil {
+		t.Error("Fehler beim MainHandler!")
+	}
+	fmt.Println("Res.Body: ", res.Body)
+}
+func TestProcStartHandler(t *testing.T) {
+	s := &http.Server{
+		Addr:           ":8080",
+		Handler:        http.HandlerFunc(procStartHandler),
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+	testServer := httptest.NewServer(s.Handler)
+	res, err := http.Get(testServer.URL)
+	if err != nil {
+		t.Error("Fehler beim ProcStartHandler!")
+	}
+	fmt.Println("Res.Body: ", res.Body)
+}
+
+func TestProcKillHandler(t *testing.T) {
+	s := &http.Server{
+		Addr:           ":8080",
+		Handler:        http.HandlerFunc(procKillHandler),
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+	testServer := httptest.NewServer(s.Handler)
+	res, err := http.Get(testServer.URL)
+	if err != nil {
+		t.Error("Fehler beim ProcKillHandler!")
+	}
+	fmt.Println("Res.Body: ", res.Body)
 }
