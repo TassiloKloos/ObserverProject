@@ -2,18 +2,22 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os/exec"
+	"runtime"
 	"strconv"
 )
 
-var availableApps []string
+var availableApps = make([]string, 0)
+var stdinPipes = make([]io.WriteCloser, 0)
 var availableAppsButtonHTML string
-var runningProcesses []*exec.Cmd
+var runningProcesses = make([]*exec.Cmd, 0)
 var stopProcessButtons string
-var restartCounter []int
-var automaticRestart []bool
+var restartCounter = make([]int, 0)
+var automaticRestart = make([]bool, 0)
+var operatingSystem string
 
 const responseStringFirstLine string = "<html><head><title></title></head><body>"
 const responseStringLastLine string = "</body></html>"
@@ -22,59 +26,35 @@ func readXML() { //später hier das XML auslesen
 	availableApps = append(availableApps, "C:/Program Files (x86)/Mozilla Firefox/firefox.exe")
 	availableApps = append(availableApps, "C:/WINDOWS/system32/notepad.exe")
 	availableApps = append(availableApps, "D:\\Uni\\5. Semester\\Programmieren 2\\test.bat")
-	a := "<form action='/procStart/?procStartID=0' method='post'><input type='submit' value='Firefox Starten'></form>"
-	b := "<form action='/procStart/?procStartID=1' method='post'><input type='submit' value='Notepad Starten'></form>"
-	c := "<form action='/procStart/?procStartID=2' method='post'><input type='submit' value='TestApp Starten'></form>"
 
-	availableAppsButtonHTML = a + b + c
+	for procStartID := range availableApps { //dynamische Erzeugung der Buttons
+		availableAppsButtonHTML = availableAppsButtonHTML + "<form action='/procStart/?procStartID=" + strconv.Itoa(procStartID) + "&autoRestart=false' method='post'><input type='submit' value='" + availableApps[procStartID] + " Starten'></form>" +
+			"<form action='/procStart/?procStartID=" + strconv.Itoa(procStartID) + "&autoRestart=true' method='post'><input type='submit' value='" + availableApps[procStartID] + " Starten (mit automatischem Neustart)'></form>"
+	}
 
 	for i := 0; i < len(availableApps); i++ {
 		restartCounter = append(restartCounter, 0)
-		automaticRestart = append(automaticRestart, false)
+		//		automaticRestart = append(automaticRestart, false)
 	}
 }
 
 func createStopButtons() {
 	stopProcessButtons = ""
-	for processNR := range runningProcesses { //überprüfen, ob Prozess noch läuft
+	for processNR := range runningProcesses { //überprüfen, ob Prozess noch läuft; automaticRestart/restartCounter beachten
 		//		_, err := os.FindProcess(runningProcesses[processNR].Process.Pid)
 		//fmt.Println(proc.Pid)
 
-		channel := make(chan error, 1)
-		go func() {
-			channel <- runningProcesses[processNR].Wait()
-		}()
-		err := <-channel
-		if err != nil {
-			//		if runningProcesses[processNR].ProcessSta != nil { //still not working
-			stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " killen'></form>"
-		}
+		//		channel := make(chan error, 1)
+		//		go func() {
+		//			channel <- runningProcesses[processNR].Wait()
+		//		}()
+		//		err := <-channel
+		//		if err != nil {
+		//			//		if runningProcesses[processNR].ProcessSta != nil { //still not working
+		stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " killen'></form>"
+		//		}
 	}
 }
-
-//func openShell(list string) bool {
-//	cmd := exec.Command(list)
-//	stdout, err := cmd.Output()
-//	if err != nil {
-//		//fmt.Println(err)
-//		return false
-//	}
-//	fmt.Println(string(stdout))
-//	return true
-//}
-
-//func enterCommand(command string, location string) bool {
-//	cmd := exec.Command(command, location)
-
-//	cmd.Run()
-//	stdout, err := cmd.Output()
-//	if !strings.Contains(err.Error(), "started") {
-//		//fmt.Println(err)
-//		return false
-//	}
-//	fmt.Println(string(stdout))
-//	return true
-//}
 
 func procStartHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -84,10 +64,17 @@ func procStartHandler(w http.ResponseWriter, r *http.Request) {
 
 	//cmd := exec.Command("D:\\Uni\\5. Semester\\Programmieren 2\\test.bat")
 
-	if err := cmd.Start(); err != nil {
+	if stdin, err := cmd.StdinPipe(); err != nil {
 		log.Fatal(err)
+		stdinPipes = append(stdinPipes, stdin)
 	}
-	fmt.Println(cmd.Process.Pid)
+	cmd.Start()
+	if q.Get("autoRestart") == "true" {
+		automaticRestart = append(automaticRestart, true)
+	} else {
+		automaticRestart = append(automaticRestart, false)
+	}
+	//fmt.Println(cmd.Process.Pid) //noch zu entfernen
 	runningProcesses = append(runningProcesses, cmd)
 
 	//	cmd.Process.Kill()
@@ -112,7 +99,11 @@ func procKillHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println(err)
 	} else {
-		runningProcesses[procToKill].Process.Kill()
+		runningProcesses[procToKill].Process.Kill() //weiches beenden folgt noch
+		//		cmd := exec.Command("Taskkill", "/PID", strconv.Itoa(runningProcesses[procToKill].Process.Pid), "/F")
+		//		cmd.Run()
+		//		defer stdinPipes[procToKill].Close()
+		//		io.WriteString(stdinPipes[procToKill], "4")
 	}
 
 	createStopButtons()
@@ -143,6 +134,10 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	readXML()
+
+	if runtime.GOOS == "windows" {
+		operatingSystem = "windows"
+	}
 
 	http.HandleFunc("/", mainHandler)
 	http.HandleFunc("/procKill/", procKillHandler)
