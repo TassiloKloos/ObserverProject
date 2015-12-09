@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"os/exec"
 	"strconv"
 )
@@ -13,6 +12,8 @@ var availableApps []string
 var availableAppsButtonHTML string
 var runningProcesses []*exec.Cmd
 var stopProcessButtons string
+var restartCounter []int
+var automaticRestart []bool
 
 const responseStringFirstLine string = "<html><head><title></title></head><body>"
 const responseStringLastLine string = "</body></html>"
@@ -24,16 +25,29 @@ func readXML() { //später hier das XML auslesen
 	a := "<form action='/procStart/?procStartID=0' method='post'><input type='submit' value='Firefox Starten'></form>"
 	b := "<form action='/procStart/?procStartID=1' method='post'><input type='submit' value='Notepad Starten'></form>"
 	c := "<form action='/procStart/?procStartID=2' method='post'><input type='submit' value='TestApp Starten'></form>"
+
 	availableAppsButtonHTML = a + b + c
+
+	for i := 0; i < len(availableApps); i++ {
+		restartCounter = append(restartCounter, 0)
+		automaticRestart = append(automaticRestart, false)
+	}
 }
 
 func createStopButtons() {
 	stopProcessButtons = ""
 	for processNR := range runningProcesses { //überprüfen, ob Prozess noch läuft
-		proc, err := os.FindProcess(runningProcesses[processNR].Process.Pid)
-		fmt.Println(proc.Pid)
-		if err == nil {
-			stopProcessButtons = stopProcessButtons + "<form action='/proc/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " anhalten'></form>"
+		//		_, err := os.FindProcess(runningProcesses[processNR].Process.Pid)
+		//fmt.Println(proc.Pid)
+
+		channel := make(chan error, 1)
+		go func() {
+			channel <- runningProcesses[processNR].Wait()
+		}()
+		err := <-channel
+		if err != nil {
+			//		if runningProcesses[processNR].ProcessSta != nil { //still not working
+			stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " killen'></form>"
 		}
 	}
 }
@@ -76,7 +90,7 @@ func procStartHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(cmd.Process.Pid)
 	runningProcesses = append(runningProcesses, cmd)
 
-	cmd.Process.Kill()
+	//	cmd.Process.Kill()
 	createStopButtons()
 	responseString := responseStringFirstLine +
 		availableAppsButtonHTML +
@@ -88,17 +102,25 @@ func procStartHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(responseString))
 }
 
-func procHandler(w http.ResponseWriter, r *http.Request) {
+func procKillHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	procNr := q.Get("procNr")
 	if procNr == "" {
 		procNr = "notFound"
 	}
-	fmt.Println(procNr)
+	procToKill, err := strconv.Atoi(procNr)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		runningProcesses[procToKill].Process.Kill()
+	}
+
+	createStopButtons()
 	responseString := responseStringFirstLine +
 		availableAppsButtonHTML +
 		"<form action='/proc/?procNr=ID0' method='post'><input type='submit' value='Prozess 0'></form>" +
 		"<form action='/proc/?procNr=ID1' method='post'><input type='submit' value='Prozess 1'></form>" +
+		stopProcessButtons +
 		responseStringLastLine
 	w.Write([]byte(responseString))
 }
@@ -109,10 +131,12 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "World"
 	}
+	createStopButtons()
 	responseString := responseStringFirstLine +
 		availableAppsButtonHTML +
 		"<form action='/proc/?procNr=ID0' method='post'><input type='submit' value='Prozess 0'></form>" +
 		"<form action='/proc/?procNr=ID1' method='post'><input type='submit' value='Prozess 1'></form>" +
+		stopProcessButtons +
 		responseStringLastLine
 	w.Write([]byte(responseString))
 }
@@ -121,7 +145,7 @@ func main() {
 	readXML()
 
 	http.HandleFunc("/", mainHandler)
-	http.HandleFunc("/proc/", procHandler)
+	http.HandleFunc("/procKill/", procKillHandler)
 	http.HandleFunc("/procStart/", procStartHandler)
 	log.Fatalln(http.ListenAndServe(":8080", nil))
 
