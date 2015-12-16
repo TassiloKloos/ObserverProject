@@ -13,6 +13,14 @@ func TestReadXML(t *testing.T) {
 		t.Error("Fehler beim Einlesen der XML-Datei")
 	}
 }
+
+func TestCheckOS(t *testing.T) {
+	checkOS()
+	if operatingSystem == "" {
+		t.Error("Fehler beim Festlegen des Betriebssystems!")
+	}
+}
+
 func TestMainHandler(t *testing.T) {
 	s := &http.Server{
 		Addr:           ":8080",
@@ -90,5 +98,3 @@ func TestProcKillHandlerWithProcNr(t *testing.T) {
 		t.Error("Fehler beim ProcKillHandlerWithProcNr!")
 	}
 }
-
-// Main ist nicht testbar!! --> Auslagern alles unnötigen Codes
