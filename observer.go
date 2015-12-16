@@ -38,6 +38,12 @@ func readXML() { //später hier das XML auslesen
 	}
 }
 
+func checkOS() {
+	if runtime.GOOS == "windows" {
+		operatingSystem = "windows"
+	}
+}
+
 func createStopButtons() {
 	stopProcessButtons = ""
 	for processNR := range runningProcesses { //überprüfen, ob Prozess noch läuft; automaticRestart/restartCounter beachten
@@ -66,6 +72,7 @@ func procStartHandler(w http.ResponseWriter, r *http.Request) {
 
 	if stdin, err := cmd.StdinPipe(); err != nil {
 		log.Fatal(err)
+	} else {
 		stdinPipes = append(stdinPipes, stdin)
 	}
 	cmd.Start()
@@ -134,10 +141,7 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	readXML()
-
-	if runtime.GOOS == "windows" {
-		operatingSystem = "windows"
-	}
+	checkOS()
 
 	http.HandleFunc("/", mainHandler)
 	http.HandleFunc("/procKill/", procKillHandler)
