@@ -3,9 +3,13 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"testing"
 	"time"
 )
+
+//	availableApps = append(availableApps, "C:\\Go\\src\\_Programme\\Project\\test.bat")
+//	availableApps = append(availableApps, "C:\\Go\\src\\_Programme\\Project\\test2.bat")
 
 func TestReadXML(t *testing.T) {
 	readXML()
@@ -14,10 +18,25 @@ func TestReadXML(t *testing.T) {
 	}
 }
 
-func TestCheckOS(t *testing.T) {
-	checkOS()
-	if operatingSystem == "" {
-		t.Error("Fehler beim Festlegen des Betriebssystems!")
+func TestCreateStopButtons(t *testing.T) {
+	runningProcesses = append(runningProcesses, exec.Command(availableApps[0]))
+	createStopButtons()
+	if stopProcessButtons == "" {
+		t.Error("Fehler beim Erzeugen der Stop-Buttons")
+	}
+}
+func TestCreateShellOutputButton(t *testing.T) {
+	runningProcesses = append(runningProcesses, exec.Command(availableApps[0]))
+	createShellOutputButtons()
+	if outputButtonHTML == "" {
+		t.Error("Fehler beim Erzeugen eines Buttons für den Shell-Output")
+	}
+}
+
+func TestCreateCounter(t *testing.T) {
+	createCounter()
+	if counterHTML == "" {
+		t.Error("Fehler beim Erzeugen eines Counters")
 	}
 }
 
@@ -83,7 +102,8 @@ func TestProcKillHandlerEmptyProcNr(t *testing.T) {
 	}
 }
 
-func TestProcKillHandlerWithProcNr(t *testing.T) {
+func TestProcKillHandlerWithProcNr(t *testing.T) { //Fehler
+	runningProcesses = append(runningProcesses, exec.Command(availableApps[0]))
 	s := &http.Server{
 		Addr:           ":8080",
 		Handler:        http.HandlerFunc(procKillHandler),
@@ -93,8 +113,55 @@ func TestProcKillHandlerWithProcNr(t *testing.T) {
 	}
 	testServer := httptest.NewServer(s.Handler)
 	url := testServer.URL + "/?procNr=0"
-	_, err := http.Get(url)
+	_, err := http.Get(url) //Fehler, obwohl Prozess vorhanden!!! --> runningProcesses[procToKill].Process.Kill(), Zeile 132
 	if err != nil {
 		t.Error("Fehler beim ProcKillHandlerWithProcNr!")
+	}
+}
+
+func TestProcSoftKillHandlerEmptyProcNr(t *testing.T) {
+	s := &http.Server{
+		Addr:           ":8080",
+		Handler:        http.HandlerFunc(procSoftKillHandler),
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+	testServer := httptest.NewServer(s.Handler)
+	_, err := http.Get(testServer.URL)
+	if err != nil {
+		t.Error("Fehler beim ProcSoftKillHandlerEmptyProcNr!")
+	}
+}
+
+func TestProcSoftKillHandlerWithProcNr(t *testing.T) {
+	s := &http.Server{
+		Addr:           ":8080",
+		Handler:        http.HandlerFunc(procSoftKillHandler),
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+	testServer := httptest.NewServer(s.Handler)
+	url := testServer.URL + "/?procNr=0"
+	_, err := http.Get(url) //Fehler --> ShellOutput[procToOutput], Zeile 197
+	if err != nil {
+		t.Error("Fehler beim ProcSoftKillHandlerWithProcNr!")
+	}
+}
+
+func TestProcShellOutputWithProcNr(t *testing.T) {
+	s := &http.Server{
+		Addr:           ":8080",
+		Handler:        http.HandlerFunc(procShellOutputHandler),
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+	testServer := httptest.NewServer(s.Handler)
+	url := testServer.URL + "/?procNr=0"
+	_, err := http.Get(url)
+	if err != nil {
+		t.Error("Fehler beim ProcShellOutputHandlerWithProcNr!")
 	}
 }
