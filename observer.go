@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os/exec"
 	"strconv"
+	"time"
 )
 
 var availableApps = make([]string, 0)
+var availableAppsNumberForCmd = make([]int64, 0)
 var stdinPipes = make([]io.WriteCloser, 0)
 var availableAppsButtonHTML string
 var runningProcesses = make([]*exec.Cmd, 0)
@@ -21,12 +23,11 @@ var counterHTML string
 var outputButtonHTML string
 var ShellOutput = make([]string, 0)
 
-const responseStringFirstLine string = "<html><head><title></title></head><body>"
+const responseStringFirstLine string = "<html><head><title></title></head><body>" + "<form action='/' method='post'><input type='submit' value='Seite refreshen'></form>"
 const responseStringLastLine string = "</body></html>"
 
 func readXML() { //später hier das XML auslesen
-	//availableApps = append(availableApps, "C:/Program Files (x86)/Mozilla Firefox/firefox.exe")
-	//availableApps = append(availableApps, "C:/WINDOWS/system32/notepad.exe")
+
 	availableApps = append(availableApps, "D:\\Uni\\5. Semester\\Programmieren 2\\test.bat")
 	availableApps = append(availableApps, "D:\\Uni\\5. Semester\\Programmieren 2\\test2.bat")
 
@@ -43,19 +44,51 @@ func readXML() { //später hier das XML auslesen
 func createStopButtons() {
 	stopProcessButtons = ""
 	for processNR := range runningProcesses { //überprüfen, ob Prozess noch läuft; automaticRestart/restartCounter beachten
-		//		_, err := os.FindProcess(runningProcesses[processNR].Process.Pid)
-		//fmt.Println(proc.Pid)
 
-		//		channel := make(chan error, 1)
-		//		go func() {
-		//			channel <- runningProcesses[processNR].Wait()
-		//		}()
-		//		err := <-channel
-		//		if err != nil {
-		//			//		if runningProcesses[processNR].ProcessSta != nil { //still not working
-		stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden'></form>" +
-			"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden'></form>"
-		//		}
+		channel := make(chan error, 1)
+		go func() {
+			channel <- runningProcesses[processNR].Wait()
+		}()
+		select {
+		case err := <-channel:
+			if err != nil {
+				fmt.Println(err)
+			}
+		case <-time.After(100000000): // 0,1 sec wait
+			fmt.Println("asdf")
+		}
+
+		//try catch Funktion hier für
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					//Catch hier
+					stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden'></form>" +
+						"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin)'></form>"
+				}
+			}()
+			//Try hier
+			if runningProcesses[processNR].ProcessState.Exited() == true && automaticRestart[processNR] == true {
+				cmd := exec.Command(availableApps[availableAppsNumberForCmd[processNR]])
+				stdin, err := cmd.StdinPipe()
+				if err != nil {
+					log.Fatal(err)
+				} else {
+					stdinPipes[processNR] = stdin
+				}
+				cmd.Start()
+				runningProcesses[processNR] = cmd
+				restartCounter[availableAppsNumberForCmd[processNR]]++
+				stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden'></form>" +
+					"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin)'></form>"
+			} else if runningProcesses[processNR].ProcessState.Exited() == false {
+				stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden'></form>" +
+					"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin)'></form>"
+			}
+		}()
+
+		//		stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden'></form>" +
+		//			"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden'></form>"
 	}
 }
 
@@ -69,7 +102,7 @@ func createShellOutputButtons() {
 func createCounter() {
 	counterHTML = ""
 	for appNR := range availableApps {
-		counterHTML = counterHTML + "<label>" + availableApps[appNR] + " wurde " + strconv.Itoa(restartCounter[appNR]) + " mal neu gestartet</label><br><br>"
+		counterHTML = counterHTML + "<label>" + availableApps[appNR] + " wurde " + strconv.Itoa(restartCounter[appNR]) + " mal automatisch neu gestartet</label><br><br>"
 	}
 }
 
@@ -78,7 +111,6 @@ func procStartHandler(w http.ResponseWriter, r *http.Request) {
 	procStart, _ := strconv.ParseInt(q.Get("procStartID"), 0, 32)
 
 	cmd := exec.Command(availableApps[procStart])
-
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		log.Fatal(err)
@@ -97,13 +129,13 @@ func procStartHandler(w http.ResponseWriter, r *http.Request) {
 	//	writer.WriteString
 	//	defer writer.Flush()
 	cmd.Start()
+	availableAppsNumberForCmd = append(availableAppsNumberForCmd, procStart)
 
 	if q.Get("autoRestart") == "true" {
 		automaticRestart = append(automaticRestart, true)
 	} else {
 		automaticRestart = append(automaticRestart, false)
 	}
-
 	runningProcesses = append(runningProcesses, cmd)
 
 	createCounter()
@@ -115,7 +147,6 @@ func procStartHandler(w http.ResponseWriter, r *http.Request) {
 		stopProcessButtons +
 		outputButtonHTML +
 		responseStringLastLine
-
 	w.Write([]byte(responseString))
 }
 
@@ -155,7 +186,7 @@ func procSoftKillHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 	} else {
 		writer := bufio.NewWriter(stdinPipes[procToKill])
-		writer.WriteString("stop")
+		writer.WriteString("stop" + "\n")
 		writer.Flush()
 		automaticRestart[procToKill] = false
 	}
