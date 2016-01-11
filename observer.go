@@ -2,18 +2,25 @@ package main
 
 import (
 	"bufio"
+	"encoding/xml"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"time"
 )
 
 var availableApps = make([]string, 0)
+var stdins = make([]string, 0)
+var stopCommands = make([]string, 0)
 var availableAppsNumberForCmd = make([]int64, 0)
 var stdinPipes = make([]io.WriteCloser, 0)
+var stdoutPipeReader = make([]*bufio.Reader, 0)
+var stdOutput = make([]string, 0)
 var availableAppsButtonHTML string
 var runningProcesses = make([]*exec.Cmd, 0)
 var stopProcessButtons string
@@ -26,10 +33,45 @@ var ShellOutput = make([]string, 0)
 const responseStringFirstLine string = "<html><head><title></title></head><body>" + "<form action='/' method='post'><input type='submit' value='Seite refreshen'></form>"
 const responseStringLastLine string = "</body></html>"
 
+type Application struct {
+	XMLName xml.Name `xml:"application"`
+	Path    string   `xml:"path"`
+	Stdin   string   `xml:"stdin"`
+	Stopexe string   `xml:"stopexe"`
+}
+
+type Observer struct {
+	XMLName      xml.Name      `xml:"observer"`
+	Applications []Application `xml:"application"`
+}
+
+func (a Application) String() string {
+	return fmt.Sprintf("path : %s - stdin : %s - stopexe : %s \n", a.Path, a.Stdin, a.Stopexe)
+}
+
 func readXML() { //später hier das XML auslesen
 
-	availableApps = append(availableApps, "D:\\Uni\\5. Semester\\Programmieren 2\\test.bat")
-	availableApps = append(availableApps, "D:\\Uni\\5. Semester\\Programmieren 2\\test2.bat")
+	//	reader := bufio.NewReader(os.Stdin)
+	//	fmt.Print("Enter XML Path: ")
+	//	line, _ := reader.ReadString('\n')
+	//	fmt.Println(line)
+
+	xmlFile, err := os.Open("D:/Uni/5. Semester/Programmieren 2/observer.xml") //variable line statt vordefinierten string läuft auf Fehler
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer xmlFile.Close()
+
+	XMLdata, _ := ioutil.ReadAll(xmlFile)
+	var o Observer
+	xml.Unmarshal(XMLdata, &o)
+
+	for count := range o.Applications {
+		availableApps = append(availableApps, o.Applications[count].Path)
+		stdins = append(stdins, o.Applications[count].Stdin)
+		stopCommands = append(stopCommands, o.Applications[count].Stopexe)
+	}
 
 	for procStartID := range availableApps { //dynamische Erzeugung der Buttons
 		availableAppsButtonHTML = availableAppsButtonHTML + "<form action='/procStart/?procStartID=" + strconv.Itoa(procStartID) + "&autoRestart=false' method='post'><input type='submit' value='" + availableApps[procStartID] + " Starten'></form>" +
@@ -47,15 +89,19 @@ func createStopButtons() {
 
 		channel := make(chan error, 1)
 		go func() {
+			line, _, _ := stdoutPipeReader[processNR].ReadLine()
+			if line != nil {
+				stdOutput[processNR] = string(line)
+			}
 			channel <- runningProcesses[processNR].Wait()
 		}()
 		select {
 		case err := <-channel:
 			if err != nil {
-				fmt.Println(err)
+				err = nil
 			}
 		case <-time.After(100000000): // 0,1 sec wait
-			fmt.Println("asdf")
+			//			wartet nicht auf beenden vom channel
 		}
 
 		//try catch Funktion hier für
@@ -70,11 +116,19 @@ func createStopButtons() {
 			//Try hier
 			if runningProcesses[processNR].ProcessState.Exited() == true && automaticRestart[processNR] == true {
 				cmd := exec.Command(availableApps[availableAppsNumberForCmd[processNR]])
+
 				stdin, err := cmd.StdinPipe()
 				if err != nil {
 					log.Fatal(err)
 				} else {
 					stdinPipes[processNR] = stdin
+				}
+
+				stdout, err := cmd.StdoutPipe()
+				if err != nil {
+					log.Fatal(err)
+				} else {
+					stdoutPipeReader[processNR] = bufio.NewReader(stdout)
 				}
 				cmd.Start()
 				runningProcesses[processNR] = cmd
@@ -86,9 +140,6 @@ func createStopButtons() {
 					"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin)'></form>"
 			}
 		}()
-
-		//		stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden'></form>" +
-		//			"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden'></form>"
 	}
 }
 
@@ -118,18 +169,19 @@ func procStartHandler(w http.ResponseWriter, r *http.Request) {
 		stdinPipes = append(stdinPipes, stdin)
 	}
 
-	//	stdout, err := cmd.StdoutPipe()
-	//	if err != nil {
-	//		log.Fatal(err)
-	//	} else {
-	//		//		ShellOutput = append(ShellOutput, asdf)
-	//	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatal(err)
+	} else {
+		reader := bufio.NewReader(stdout)
+		stdoutPipeReader = append(stdoutPipeReader, reader)
+	}
 
-	//	writer := bufio.ReadWriter(cmd.Stdin, cmd.Stdout)
-	//	writer.WriteString
-	//	defer writer.Flush()
 	cmd.Start()
 	availableAppsNumberForCmd = append(availableAppsNumberForCmd, procStart)
+	reader := bufio.NewReader(stdout)
+	line, _, _ := reader.ReadLine()
+	stdOutput = append(stdOutput, string(line))
 
 	if q.Get("autoRestart") == "true" {
 		automaticRestart = append(automaticRestart, true)
@@ -186,7 +238,7 @@ func procSoftKillHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 	} else {
 		writer := bufio.NewWriter(stdinPipes[procToKill])
-		writer.WriteString("stop" + "\n")
+		writer.WriteString(stdins[availableAppsNumberForCmd[procToKill]] + "\n")
 		writer.Flush()
 		automaticRestart[procToKill] = false
 	}
@@ -213,23 +265,15 @@ func procShellOutputHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 	}
 
-	//abfrage ob prozess noch läuft (siehe Stop Buttons)
-	//	stdout, err := ioutil.ReadAll(runningProcesses[procNr].Stdout)
-	//	if err != nil {
-	//		log.Fatal(err)
-	//	} else {
-	//		ShellOutput[procNr] = string(stdout)
-	//	}
-
 	createCounter()
 	createStopButtons()
 	createShellOutputButtons()
 	responseString := responseStringFirstLine +
-		"<script>alert(" + ShellOutput[procToOutput] + ")</script>" +
 		availableAppsButtonHTML +
 		counterHTML +
 		stopProcessButtons +
 		outputButtonHTML +
+		"<label>Letzter bekannter Output: " + stdOutput[procToOutput] + "</label><br><br>" +
 		responseStringLastLine
 	w.Write([]byte(responseString))
 }
