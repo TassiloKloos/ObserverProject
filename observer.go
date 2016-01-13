@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -19,7 +20,6 @@ var stdins = make([]string, 0)
 var stopCommands = make([]string, 0)
 var availableAppsNumberForCmd = make([]int64, 0)
 var stdinPipes = make([]io.WriteCloser, 0)
-var stdoutPipeReader = make([]*bufio.Reader, 0)
 var stdOutput = make([]string, 0)
 var availableAppsButtonHTML string
 var runningProcesses = make([]*exec.Cmd, 0)
@@ -28,7 +28,7 @@ var restartCounter = make([]int, 0)
 var automaticRestart = make([]bool, 0)
 var counterHTML string
 var outputButtonHTML string
-var ShellOutput = make([]string, 0)
+var path string
 
 const responseStringFirstLine string = "<html><head><title></title></head><body>" + "<form action='/' method='post'><input type='submit' value='Seite refreshen'></form>"
 const responseStringLastLine string = "</body></html>"
@@ -49,53 +49,77 @@ func (a Application) String() string {
 	return fmt.Sprintf("path : %s - stdin : %s - stopexe : %s \n", a.Path, a.Stdin, a.Stopexe)
 }
 
-func readXML() { //später hier das XML auslesen
+func readXML(firstStart bool) {
+	if firstStart { //wird nur bei Programmstart ausgeführt
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Enter XML Path: ")
+		line, _ := reader.ReadString('\n')
+		line = strings.Trim(line, "\r")
+		line = strings.Replace(line, "\r", "", -1)
+		line = strings.Replace(line, "\n", "", -1)
+		path = line
+		//Testpfad D:\Uni\5. Semester\Programmieren 2\observer.xml
 
-	//	reader := bufio.NewReader(os.Stdin)
-	//	fmt.Print("Enter XML Path: ")
-	//	line, _ := reader.ReadString('\n')
-	//	fmt.Println(line)
+		xmlFile, err := os.Open(path)
+		if err != nil {
+			fmt.Println("Error opening file:", err)
+			return
+		}
+		defer xmlFile.Close()
 
-	xmlFile, err := os.Open("D:/Uni/5. Semester/Programmieren 2/observer.xml") //variable line statt vordefinierten string läuft auf Fehler
-	if err != nil {
-		fmt.Println("Error opening file:", err)
-		return
-	}
-	defer xmlFile.Close()
+		XMLdata, _ := ioutil.ReadAll(xmlFile)
+		var o Observer
+		xml.Unmarshal(XMLdata, &o)
 
-	XMLdata, _ := ioutil.ReadAll(xmlFile)
-	var o Observer
-	xml.Unmarshal(XMLdata, &o)
+		availableApps = make([]string, 0)
+		stdins = make([]string, 0)
+		stopCommands = make([]string, 0)
+		for count := range o.Applications {
 
-	for count := range o.Applications {
-		availableApps = append(availableApps, o.Applications[count].Path)
-		stdins = append(stdins, o.Applications[count].Stdin)
-		stopCommands = append(stopCommands, o.Applications[count].Stopexe)
-	}
+			availableApps = append(availableApps, o.Applications[count].Path)
+			stdins = append(stdins, o.Applications[count].Stdin)
+			stopCommands = append(stopCommands, o.Applications[count].Stopexe)
+		}
 
-	for procStartID := range availableApps { //dynamische Erzeugung der Buttons
-		availableAppsButtonHTML = availableAppsButtonHTML + "<form action='/procStart/?procStartID=" + strconv.Itoa(procStartID) + "&autoRestart=false' method='post'><input type='submit' value='" + availableApps[procStartID] + " Starten'></form>" +
-			"<form action='/procStart/?procStartID=" + strconv.Itoa(procStartID) + "&autoRestart=true' method='post'><input type='submit' value='" + availableApps[procStartID] + " Starten (mit automatischem Neustart)'></form>"
-	}
+		availableAppsButtonHTML = ""
+		for procStartID := range availableApps { //dynamische Erzeugung der Buttons
+			availableAppsButtonHTML = availableAppsButtonHTML + "<form action='/procStart/?procStartID=" + strconv.Itoa(procStartID) + "&autoRestart=false' method='post'><input type='submit' value='" + availableApps[procStartID] + " Starten'></form>" +
+				"<form action='/procStart/?procStartID=" + strconv.Itoa(procStartID) + "&autoRestart=true' method='post'><input type='submit' value='" + availableApps[procStartID] + " Starten (mit automatischem Neustart)'></form>"
+		}
 
-	for i := 0; i < len(availableApps); i++ {
-		restartCounter = append(restartCounter, 0)
+		for i := 0; i < len(availableApps); i++ {
+			restartCounter = append(restartCounter, 0)
+		}
+	} else { // aktualisiert stdins immer, wenn stop buttons erzeugt werden
+		xmlFile, err := os.Open(path)
+		if err != nil {
+			fmt.Println("Error opening file:", err)
+			return
+		}
+		defer xmlFile.Close()
+
+		XMLdata, _ := ioutil.ReadAll(xmlFile)
+		var o Observer
+		xml.Unmarshal(XMLdata, &o)
+
+		stdins = make([]string, 0)
+		for count := range o.Applications {
+			stdins = append(stdins, o.Applications[count].Stdin)
+		}
 	}
 }
 
 func createStopButtons() {
+	readXML(false)
+
 	stopProcessButtons = ""
 	for processNR := range runningProcesses { //überprüfen, ob Prozess noch läuft; automaticRestart/restartCounter beachten
 
 		channel := make(chan error, 1)
 		go func() {
-			line, _, _ := stdoutPipeReader[processNR].ReadLine()
-			if line != nil {
-				stdOutput[processNR] = string(line)
-			}
 			channel <- runningProcesses[processNR].Wait()
 		}()
-		select {
+		select { // die Idee einen select mit Timeout auf den Channel zu machen stammt von Oliver Raum, der Code wurde ohne seine Hilfe erstellt
 		case err := <-channel:
 			if err != nil {
 				err = nil
@@ -109,8 +133,9 @@ func createStopButtons() {
 			defer func() {
 				if r := recover(); r != nil {
 					//Catch hier
-					stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden'></form>" +
-						"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin)'></form>"
+					stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden, automatischer Neustart = " + strconv.FormatBool(automaticRestart[processNR]) + "'></form>" +
+						"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin), automatischer Neustart = " + strconv.FormatBool(automaticRestart[processNR]) + "'></form>" +
+						"<form action='/procAppKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " durch eine Anwendung beenden, automatischer Neustart = " + strconv.FormatBool(automaticRestart[processNR]) + "'></form>"
 				}
 			}()
 			//Try hier
@@ -127,26 +152,35 @@ func createStopButtons() {
 				stdout, err := cmd.StdoutPipe()
 				if err != nil {
 					log.Fatal(err)
-				} else {
-					stdoutPipeReader[processNR] = bufio.NewReader(stdout)
 				}
+				reader := bufio.NewReader(stdout)
 				cmd.Start()
+				line, _, _ := reader.ReadLine()
+				stdOutput = append(stdOutput, string(line))
 				runningProcesses[processNR] = cmd
 				restartCounter[availableAppsNumberForCmd[processNR]]++
-				stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden'></form>" +
-					"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin)'></form>"
+				stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden, automatischer Neustart = " + strconv.FormatBool(automaticRestart[processNR]) + "'></form>" +
+					"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin), automatischer Neustart = " + strconv.FormatBool(automaticRestart[processNR]) + "'></form>" +
+					"<form action='/procAppKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " durch eine Anwendung beenden, automatischer Neustart = " + strconv.FormatBool(automaticRestart[processNR]) + "'></form>"
 			} else if runningProcesses[processNR].ProcessState.Exited() == false {
-				stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden'></form>" +
-					"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin)'></form>"
+				stopProcessButtons = stopProcessButtons + "<form action='/procKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " hart beenden, automatischer Neustart = " + strconv.FormatBool(automaticRestart[processNR]) + "'></form>" +
+					"<form action='/procSoftKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " weich beenden (stdin), automatischer Neustart = " + strconv.FormatBool(automaticRestart[processNR]) + "'></form>" +
+					"<form action='/procAppKill/?procNr=" + strconv.Itoa(processNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[processNR].Path + " durch eine Anwendung beenden, automatischer Neustart = " + strconv.FormatBool(automaticRestart[processNR]) + "'></form>"
 			}
 		}()
 	}
 }
 
 func createShellOutputButtons() {
+	var sliceOutputButtonHTML = make([]string, 0)
 	outputButtonHTML = ""
 	for appNR := range runningProcesses {
-		outputButtonHTML = outputButtonHTML + "<form action='/procShellOutput/?procNr=" + strconv.Itoa(appNR) + "' method='post'><input type='submit' value='Prozess " + runningProcesses[appNR].Path + " Shell Output zeigen'></form>"
+		sliceOutputButtonHTML = append(sliceOutputButtonHTML, "<form action='/procShellOutput/?procNr="+strconv.Itoa(appNR)+"' method='post'><input type='submit' value='Prozess "+runningProcesses[appNR].Path+" Shell Output zeigen'></form>")
+	}
+	for position := range sliceOutputButtonHTML {
+		if position < 10 { //limit der Output Buttons auf maximal 10 Stück
+			outputButtonHTML = outputButtonHTML + sliceOutputButtonHTML[len(sliceOutputButtonHTML)-1-position]
+		}
 	}
 }
 
@@ -172,14 +206,11 @@ func procStartHandler(w http.ResponseWriter, r *http.Request) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Fatal(err)
-	} else {
-		reader := bufio.NewReader(stdout)
-		stdoutPipeReader = append(stdoutPipeReader, reader)
 	}
 
+	reader := bufio.NewReader(stdout)
 	cmd.Start()
 	availableAppsNumberForCmd = append(availableAppsNumberForCmd, procStart)
-	reader := bufio.NewReader(stdout)
 	line, _, _ := reader.ReadLine()
 	stdOutput = append(stdOutput, string(line))
 
@@ -254,6 +285,32 @@ func procSoftKillHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(responseString))
 }
 
+func procAppKillHandler(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	procNr := q.Get("procNr")
+	if procNr == "" {
+		procNr = "notFound"
+	}
+	procToKill, err := strconv.Atoi(procNr)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		cmd := exec.Command(stopCommands[availableAppsNumberForCmd[procToKill]])
+		cmd.Start() //es wird angenommen, dass die Beenden-Anwendung sich selbst schließt
+		automaticRestart[procToKill] = false
+	}
+	createCounter()
+	createStopButtons()
+	createShellOutputButtons()
+	responseString := responseStringFirstLine +
+		availableAppsButtonHTML +
+		counterHTML +
+		stopProcessButtons +
+		outputButtonHTML +
+		responseStringLastLine
+	w.Write([]byte(responseString))
+}
+
 func procShellOutputHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	procNr := q.Get("procNr")
@@ -292,11 +349,12 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	readXML()
+	readXML(true)
 
 	http.HandleFunc("/", mainHandler)
 	http.HandleFunc("/procKill/", procKillHandler)
 	http.HandleFunc("/procSoftKill/", procSoftKillHandler)
+	http.HandleFunc("/procAppKill/", procAppKillHandler)
 	http.HandleFunc("/procStart/", procStartHandler)
 	http.HandleFunc("/procShellOutput/", procShellOutputHandler)
 	log.Fatalln(http.ListenAndServe(":8080", nil))
