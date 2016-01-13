@@ -49,15 +49,10 @@ func (a Application) String() string {
 	return fmt.Sprintf("path : %s - stdin : %s - stopexe : %s \n", a.Path, a.Stdin, a.Stopexe)
 }
 
-func readXML(firstStart bool) {
+func readXML(firstStart bool, xmlPath string) {
 	if firstStart { //wird nur bei Programmstart ausgeführt
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Enter XML Path: ")
-		line, _ := reader.ReadString('\n')
-		line = strings.Trim(line, "\r")
-		line = strings.Replace(line, "\r", "", -1)
-		line = strings.Replace(line, "\n", "", -1)
-		path = line
+		path = xmlPath
+
 		//Testpfad D:\Uni\5. Semester\Programmieren 2\observer.xml
 
 		xmlFile, err := os.Open(path)
@@ -110,7 +105,7 @@ func readXML(firstStart bool) {
 }
 
 func createStopButtons() {
-	readXML(false)
+	readXML(false, "")
 
 	stopProcessButtons = ""
 	for processNR := range runningProcesses { //überprüfen, ob Prozess noch läuft; automaticRestart/restartCounter beachten
@@ -349,7 +344,14 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	readXML(true)
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Enter XML Path: ")
+	line, _ := reader.ReadString('\n')
+	line = strings.Trim(line, "\r")
+	line = strings.Replace(line, "\r", "", -1)
+	line = strings.Replace(line, "\n", "", -1)
+	path = line
+	readXML(true, path)
 
 	http.HandleFunc("/", mainHandler)
 	http.HandleFunc("/procKill/", procKillHandler)
