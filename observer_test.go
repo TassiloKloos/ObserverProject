@@ -1,16 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
 	"testing"
 	"time"
 )
-
-//	availableApps = append(availableApps, "C:\\Go\\src\\_Programme\\Project\\test.bat")
-//	availableApps = append(availableApps, "C:\\Go\\src\\_Programme\\Project\\test2.bat")
 
 func TestReadXML(t *testing.T) {
 	readXML()
@@ -175,19 +171,11 @@ func TestProcShellOutputWithProcNr(t *testing.T) { //Noch nicht implementierbar!
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
-	fmt.Println(s.Addr)
-	//testServer := httptest.NewServer(s.Handler)
-	//url := testServer.URL + "/?procNr=0"
-	//_, err := http.Get(url)
-	//if err != nil {
-	//	t.Error("Fehler beim ProcShellOutputHandlerWithProcNr!")
-}
-
-func TestCreateStopButtons(t *testing.T) {
-	runningProcesses = append(runningProcesses, exec.Command(availableApps[0]))
-	createStopButtons()
-	if stopProcessButtons == "" {
-		t.Error("Fehler beim Erzeugen der Stop-Buttons")
+	testServer := httptest.NewServer(s.Handler)
+	url := testServer.URL + "/?procNr=0"
+	_, err := http.Get(url)
+	if err != nil {
+		t.Error("Fehler beim ProcShellOutputHandlerWithProcNr!")
 	}
 }
 
@@ -196,5 +184,14 @@ func TestCreateShellOutputButton(t *testing.T) {
 	createShellOutputButtons()
 	if outputButtonHTML == "" {
 		t.Error("Fehler beim Erzeugen eines Buttons für den Shell-Output")
+	}
+}
+
+func TestCreateStopButtons(t *testing.T) {
+	readXML()
+	runningProcesses = append(runningProcesses, exec.Command(availableApps[0]))
+	//	createStopButtons() //Fehler bei createStopButtons(),
+	if stopProcessButtons == "" {
+		t.Error("Fehler beim Erzeugen der Stop-Buttons")
 	}
 }
