@@ -1,5 +1,8 @@
 package main
 
+//Matrikelnummer Carsten Bieber: 4346441
+//Matrikelnummer Tassilo Kloos: 2257414
+
 import (
 	"bufio"
 	"encoding/xml"

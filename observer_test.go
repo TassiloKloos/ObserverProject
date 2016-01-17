@@ -1,5 +1,8 @@
 package main
 
+//Matrikelnummer Carsten Bieber: 4346441
+//Matrikelnummer Tassilo Kloos: 2257414
+
 import (
 	"net/http"
 	"net/http/httptest"
@@ -244,7 +247,7 @@ func TestProcShellOutputWithProcNr(t *testing.T) {
 		MaxHeaderBytes: 1 << 20,
 	}
 	//Verwendung des Pakets httptest
-	testServerHelp := httptest.NewServer(help.Handler
+	testServerHelp := httptest.NewServer(help.Handler)
 	urlHelp := testServerHelp.URL + "/?procStartID=0&autoRestart=true"
 	_, errHelp := http.Get(urlHelp)
 	//Test läuft weiter, falls keine Fehlermeldung ausgegeben
